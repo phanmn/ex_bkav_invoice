@@ -30,7 +30,10 @@ defmodule ExBkavInvoice.MixProject do
 
   defp deps do
     [
-      {:req, "~> 0.7"},
+      # Only Req.request/1 and %Req.Response{} are used, and both behave the same
+      # across 0.6 and 0.7 — the wider range lets a host application on either
+      # line adopt this without moving its whole HTTP stack.
+      {:req, "~> 0.6 or ~> 0.7"},
       {:jason, "~> 1.4"},
       {:plug, "~> 1.20", only: :test},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false}
