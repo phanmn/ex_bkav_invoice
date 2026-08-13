@@ -168,24 +168,19 @@ ExBkavInvoice.Client.exec(config, 853, %{
 Per Bkav's integration diagram, the payload on `EncryptedCommandData` is:
 
 ```
-JSON -> compress -> AES-256-CBC (PKCS#7) -> Base64
+JSON -> gzip -> AES-256-CBC (PKCS#7) -> Base64
 ```
 
 The `PartnerToken` carries both halves of the key material as
 `base64(key):base64(iv)` — 32 bytes of key, 16 of IV.
 
-### If your first call fails
+Bkav's FAQ diagrams a compression step without naming the algorithm. It is
+gzip: working integrations against this service use PHP's `gzencode` /
+`gzdecode`, which is gzip (RFC 1952) rather than raw deflate. Nothing here is
+configurable, because there is nothing to choose.
 
-Bkav's FAQ documents the compression step but never names the algorithm, and the
-two plausible readings of their .NET sample disagree on the bytes: `GZipStream`
-yields a gzip container, `DeflateStream` yields raw deflate. This library
-defaults to `:gzip`. If the service rejects your first request, try:
-
-```elixir
-ExBkavInvoice.Config.new!(..., compression: :deflate)
-```
-
-Responses are sniffed by container, so only the request direction is affected.
+Responses are gunzipped only when they carry the gzip magic — some error
+replies come back as bare, unencrypted JSON, and those pass through untouched.
 
 A `Padding is invalid and cannot be removed` error means the `PartnerGUID` and
 `PartnerToken` do not match — eHoadon reports credential mismatches that way

@@ -7,19 +7,16 @@ defmodule ExBkavInvoice.Config do
   several branches holds one config per branch rather than one globally.
   """
 
-  @type compression :: :gzip | :deflate | :zlib | :none
-
   @type t :: %__MODULE__{
           partner_guid: String.t(),
           key: binary(),
           iv: binary(),
           url: String.t(),
-          compression: compression(),
           req_options: keyword()
         }
 
   @enforce_keys [:partner_guid, :key, :iv, :url]
-  defstruct [:partner_guid, :key, :iv, :url, compression: :gzip, req_options: []]
+  defstruct [:partner_guid, :key, :iv, :url, req_options: []]
 
   @doc """
   Builds a config, raising on invalid credentials.
@@ -33,8 +30,6 @@ defmodule ExBkavInvoice.Config do
     * `:endpoint` — required, the full web-service URL. Which host you talk to is
       deployment configuration, so it comes from you rather than from a name
       baked into this library.
-    * `:compression` — payload compression, see `ExBkavInvoice.Codec`. Defaults to
-      `:gzip`.
     * `:req_options` — merged into every `Req` request (`:receive_timeout`,
       `:retry`, `:plug` for tests, …).
 
@@ -83,7 +78,6 @@ defmodule ExBkavInvoice.Config do
          key: key,
          iv: iv,
          url: url,
-         compression: Keyword.get(opts, :compression, :gzip),
          req_options: Keyword.get(opts, :req_options, [])
        }}
     end

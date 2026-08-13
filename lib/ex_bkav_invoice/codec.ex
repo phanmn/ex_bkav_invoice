@@ -4,29 +4,16 @@ defmodule ExBkavInvoice.Codec do
 
   Outbound, per Bkav's integration diagram:
 
-      JSON/XML string -> compress -> AES-256-CBC -> Base64
+      JSON/XML string -> gzip -> AES-256-CBC -> Base64
 
-  Inbound is the mirror image: Base64 -> decrypt -> decompress.
-
-  ## Compression
-
-  Bkav's own sample code compresses to save bandwidth but the FAQ never names
-  the algorithm, and the two plausible readings of a .NET implementation
-  disagree on the wire bytes: `GZipStream` produces a gzip container
-  (`:gzip`) while `DeflateStream` produces a raw deflate stream (`:deflate`).
-  The default here is `:gzip`; switch with `compression: :deflate` (or
-  `:zlib` for a zlib-wrapped stream, `:none` to skip it) if the demo endpoint
-  rejects your first call. `decompress/2` sniffs the container regardless of
-  the configured setting, so responses decode even when the guess for the
-  request direction was wrong.
+  Inbound is the mirror image: Base64 -> decrypt -> gunzip.
 
   ## Padding
 
-  AES-CBC requires input in whole 16-byte blocks, and .NET's default is PKCS#7,
-  which is what `pad/1` applies. A wrong `PartnerGUID`/`PartnerToken` pair
-  decrypts to bytes whose trailing padding is nonsense, which is why eHoadon
-  answers a credential mismatch with `"Padding is invalid and cannot be
-  removed"` rather than an auth error.
+  AES-CBC requires input in whole 16-byte blocks, and the padding is PKCS#7.
+  A wrong `PartnerGUID`/`PartnerToken` pair decrypts to bytes whose trailing
+  padding is nonsense, which is why eHoadon answers a credential mismatch with
+  `"Padding is invalid and cannot be removed"` rather than an auth error.
   """
 
   @block_size 16
@@ -37,8 +24,7 @@ defmodule ExBkavInvoice.Codec do
   @spec encode(binary(), ExBkavInvoice.Config.t()) ::
           {:ok, String.t()} | {:error, ExBkavInvoice.Error.t()}
   def encode(payload, %ExBkavInvoice.Config{} = config) when is_binary(payload) do
-    with {:ok, compressed} <- compress(payload, config.compression),
-         {:ok, ciphertext} <- encrypt(compressed, config.key, config.iv) do
+    with {:ok, ciphertext} <- encrypt(:zlib.gzip(payload), config.key, config.iv) do
       {:ok, Base.encode64(ciphertext)}
     end
   end
@@ -55,7 +41,7 @@ defmodule ExBkavInvoice.Codec do
   def decode(body, %ExBkavInvoice.Config{} = config) when is_binary(body) do
     with {:ok, ciphertext} <- decode64(body),
          {:ok, plaintext} <- decrypt(ciphertext, config.key, config.iv) do
-      decompress(plaintext, config.compression)
+      {:ok, decompress(plaintext)}
     else
       {:error, %ExBkavInvoice.Error{kind: :codec}} -> {:ok, body}
       other -> other
@@ -119,54 +105,20 @@ defmodule ExBkavInvoice.Codec do
   def unpad(_),
     do: {:error, ExBkavInvoice.Error.codec("Padding is invalid and cannot be removed")}
 
-  @doc false
-  @spec compress(binary(), ExBkavInvoice.Config.compression()) ::
-          {:ok, binary()} | {:error, ExBkavInvoice.Error.t()}
-  def compress(data, :none), do: {:ok, data}
-  def compress(data, :gzip), do: {:ok, :zlib.gzip(data)}
-  def compress(data, :deflate), do: {:ok, :zlib.zip(data)}
-  def compress(data, :zlib), do: {:ok, :zlib.compress(data)}
-
-  def compress(_data, other),
-    do: {:error, ExBkavInvoice.Error.config("unknown compression #{inspect(other)}")}
-
   @doc """
-  Decompresses `data`, preferring whatever container the bytes actually carry.
+  Gunzips `data`, returning it unchanged when it carries no gzip header.
 
-  The configured algorithm is only the fallback, so a response compressed
-  differently from the request still decodes.
+  Not every response is compressed — some error replies come back as bare JSON —
+  so this leans on the two-byte gzip magic rather than assuming.
   """
-  @spec decompress(binary(), ExBkavInvoice.Config.compression()) ::
-          {:ok, binary()} | {:error, ExBkavInvoice.Error.t()}
-  def decompress(data, configured) do
-    case sniff(data) do
-      :gzip -> safe_decompress(data, &:zlib.gunzip/1)
-      :zlib -> safe_decompress(data, &:zlib.uncompress/1)
-      :unknown -> fallback_decompress(data, configured)
-    end
-  end
-
-  # A gzip member always opens with the magic 0x1f 0x8b; a zlib stream opens with
-  # a CMF byte of 0x78 for the 32K windows every common encoder uses. Raw deflate
-  # has no header at all, so it can only be recognised by trying it.
-  defp sniff(<<0x1F, 0x8B, _::binary>>), do: :gzip
-  defp sniff(<<0x78, second, _::binary>>) when second in [0x01, 0x5E, 0x9C, 0xDA], do: :zlib
-  defp sniff(_), do: :unknown
-
-  defp fallback_decompress(data, :none), do: {:ok, data}
-
-  defp fallback_decompress(data, _configured) do
-    case safe_decompress(data, &:zlib.unzip/1) do
-      {:ok, inflated} -> {:ok, inflated}
-      {:error, _} -> {:ok, data}
-    end
-  end
-
-  defp safe_decompress(data, fun) do
-    {:ok, fun.(data)}
+  @spec decompress(binary()) :: binary()
+  def decompress(<<0x1F, 0x8B, _::binary>> = data) do
+    :zlib.gunzip(data)
   rescue
-    e -> {:error, ExBkavInvoice.Error.codec("decompression failed", e)}
+    _ -> data
   end
+
+  def decompress(data), do: data
 
   defp decode64(body) do
     case Base.decode64(body, ignore: :whitespace) do

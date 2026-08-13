@@ -27,25 +27,24 @@ defmodule ExBkavInvoice.CodecTest do
       assert {:ok, _} = Base.decode64(encoded)
     end
 
-    test "round-trips under every compression setting" do
-      for compression <- [:gzip, :deflate, :zlib, :none] do
-        config = ExBkavInvoice.Fixtures.config(compression: compression)
-        payload = String.duplicate("hoá đơn ", 200)
+    test "round-trips a payload large enough to actually compress", %{config: config} do
+      payload = String.duplicate("hoá đơn ", 200)
 
-        assert {:ok, encoded} = ExBkavInvoice.Codec.encode(payload, config)
-
-        assert {:ok, ^payload} = ExBkavInvoice.Codec.decode(encoded, config),
-               "failed for #{compression}"
-      end
+      assert {:ok, encoded} = ExBkavInvoice.Codec.encode(payload, config)
+      assert {:ok, ^payload} = ExBkavInvoice.Codec.decode(encoded, config)
     end
 
-    test "decodes a response compressed differently from the request", %{config: config} do
-      deflate_config = ExBkavInvoice.Fixtures.config(compression: :deflate)
-      payload = ~s({"Status":0})
+    test "gzips the payload before encrypting it", %{config: config} do
+      payload = String.duplicate("a", 500)
 
-      # The service answered with gzip while this config sends deflate.
       assert {:ok, encoded} = ExBkavInvoice.Codec.encode(payload, config)
-      assert {:ok, ^payload} = ExBkavInvoice.Codec.decode(encoded, deflate_config)
+      assert {:ok, ciphertext} = Base.decode64(encoded)
+      assert {:ok, compressed} = ExBkavInvoice.Codec.decrypt(ciphertext, config.key, config.iv)
+
+      # PHP's gzencode/gzdecode, which Bkav integrations use, is gzip — so the
+      # plaintext under the cipher must carry the gzip magic, not raw deflate.
+      assert <<0x1F, 0x8B, _::binary>> = compressed
+      assert :zlib.gunzip(compressed) == payload
     end
   end
 
@@ -120,22 +119,20 @@ defmodule ExBkavInvoice.CodecTest do
     end
   end
 
-  describe "decompress/2" do
-    test "recognises gzip regardless of the configured algorithm" do
-      compressed = :zlib.gzip("hello")
-
-      assert {:ok, "hello"} = ExBkavInvoice.Codec.decompress(compressed, :deflate)
+  describe "decompress/1" do
+    test "gunzips a gzip member" do
+      assert ExBkavInvoice.Codec.decompress(:zlib.gzip("hello")) == "hello"
     end
 
-    test "recognises a zlib stream regardless of the configured algorithm" do
-      compressed = :zlib.compress("hello")
-
-      assert {:ok, "hello"} = ExBkavInvoice.Codec.decompress(compressed, :gzip)
+    test "leaves uncompressed data alone" do
+      assert ExBkavInvoice.Codec.decompress("not compressed at all") ==
+               "not compressed at all"
     end
 
-    test "leaves uncompressed data alone when it cannot be inflated" do
-      assert {:ok, "not compressed at all"} =
-               ExBkavInvoice.Codec.decompress("not compressed at all", :gzip)
+    test "leaves truncated gzip data alone instead of raising" do
+      truncated = :binary.part(:zlib.gzip("hello"), 0, 8)
+
+      assert ExBkavInvoice.Codec.decompress(truncated) == truncated
     end
   end
 end
