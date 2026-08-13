@@ -14,7 +14,7 @@ defmodule ExBkavInvoice.Fixtures do
     [
       partner_guid: "d414d2d2-74d0-4417-a1a2-38f589822c98",
       partner_token: token(),
-      endpoint: :demo
+      endpoint: "https://wsdemo.example.test/WSPublicEHoaDon.asmx"
     ]
     |> Keyword.merge(opts)
     |> ExBkavInvoice.Config.new!()

@@ -7,11 +7,6 @@ defmodule ExBkavInvoice.Config do
   several branches holds one config per branch rather than one globally.
   """
 
-  @endpoints %{
-    demo: "https://wsdemo.ehoadon.vn/WSPublicEHoaDon.asmx",
-    production: "https://ws.ehoadon.vn/WSPublicEHoaDon.asmx"
-  }
-
   @type compression :: :gzip | :deflate | :zlib | :none
 
   @type t :: %__MODULE__{
@@ -35,7 +30,9 @@ defmodule ExBkavInvoice.Config do
     * `:partner_token` — required, the token Bkav issued, in its native
       `base64(key):base64(iv)` form. Alternatively pass `:key` and `:iv` as raw
       binaries.
-    * `:endpoint` — `:demo` (default), `:production`, or an explicit URL.
+    * `:endpoint` — required, the full web-service URL. Which host you talk to is
+      deployment configuration, so it comes from you rather than from a name
+      baked into this library.
     * `:compression` — payload compression, see `ExBkavInvoice.Codec`. Defaults to
       `:gzip`.
     * `:req_options` — merged into every `Req` request (`:receive_timeout`,
@@ -45,10 +42,24 @@ defmodule ExBkavInvoice.Config do
 
       iex> config = ExBkavInvoice.Config.new!(
       ...>   partner_guid: "d414d2d2-74d0-4417-a1a2-38f589822c98",
-      ...>   partner_token: "54dSxtErH+vsKKfL4PKaoerNYE6dwzmpzkLAxity8F4=:+bRSEW7FUEnzLy9xjuP5wA=="
+      ...>   partner_token: "54dSxtErH+vsKKfL4PKaoerNYE6dwzmpzkLAxity8F4=:+bRSEW7FUEnzLy9xjuP5wA==",
+      ...>   endpoint: "https://ws.ehoadon.vn/WSPublicEHoaDon.asmx"
       ...> )
       iex> byte_size(config.key)
       32
+
+  Omitting the endpoint is an error rather than a guess:
+
+      iex> ExBkavInvoice.Config.new(
+      ...>   partner_guid: "guid",
+      ...>   partner_token: "54dSxtErH+vsKKfL4PKaoerNYE6dwzmpzkLAxity8F4=:+bRSEW7FUEnzLy9xjuP5wA=="
+      ...> )
+      {:error, %ExBkavInvoice.Error{
+        kind: :config,
+        message: "endpoint is required",
+        code: nil,
+        reason: nil
+      }}
   """
   @spec new!(keyword()) :: t()
   def new!(opts) do
@@ -148,23 +159,21 @@ defmodule ExBkavInvoice.Config do
     end
   end
 
+  # Deliberately has no default. Defaulting to a test host would let a caller who
+  # forgot to configure an endpoint succeed at every step while issuing invoices
+  # that never reach the real tax authority; defaulting to a live one would be
+  # worse. Whichever host you want, say so.
   defp fetch_url(opts) do
-    case Keyword.get(opts, :endpoint, :demo) do
-      url when is_binary(url) ->
+    case Keyword.fetch(opts, :endpoint) do
+      {:ok, url} when is_binary(url) and url != "" ->
         {:ok, url}
 
-      name when is_map_key(@endpoints, name) ->
-        {:ok, Map.fetch!(@endpoints, name)}
-
-      other ->
+      {:ok, other} ->
         {:error,
-         ExBkavInvoice.Error.config(
-           "endpoint must be :demo, :production or a URL string, got #{inspect(other)}"
-         )}
+         ExBkavInvoice.Error.config("endpoint must be a URL string, got #{inspect(other)}")}
+
+      :error ->
+        {:error, ExBkavInvoice.Error.config("endpoint is required")}
     end
   end
-
-  @doc "The built-in endpoint URLs, keyed by `:demo` and `:production`."
-  @spec endpoints() :: %{demo: String.t(), production: String.t()}
-  def endpoints, do: @endpoints
 end

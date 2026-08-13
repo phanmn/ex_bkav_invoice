@@ -44,25 +44,23 @@ defmodule ExBkavInvoice.ConfigTest do
   end
 
   describe "new/1" do
-    test "defaults to the demo endpoint" do
-      assert {:ok, config} =
+    test "requires an endpoint rather than guessing one" do
+      assert {:error, %ExBkavInvoice.Error{kind: :config, message: message}} =
                ExBkavInvoice.Config.new(
                  partner_guid: "g",
                  partner_token: ExBkavInvoice.Fixtures.token()
                )
 
-      assert config.url == ExBkavInvoice.Config.endpoints().demo
+      assert message == "endpoint is required"
     end
 
-    test "resolves the production endpoint" do
-      assert {:ok, config} =
+    test "rejects an empty endpoint" do
+      assert {:error, %ExBkavInvoice.Error{kind: :config}} =
                ExBkavInvoice.Config.new(
                  partner_guid: "g",
                  partner_token: ExBkavInvoice.Fixtures.token(),
-                 endpoint: :production
+                 endpoint: ""
                )
-
-      assert config.url == "https://ws.ehoadon.vn/WSPublicEHoaDon.asmx"
     end
 
     test "accepts an explicit URL" do
@@ -81,7 +79,8 @@ defmodule ExBkavInvoice.ConfigTest do
                ExBkavInvoice.Config.new(
                  partner_guid: "g",
                  key: ExBkavInvoice.Fixtures.key(),
-                 iv: ExBkavInvoice.Fixtures.iv()
+                 iv: ExBkavInvoice.Fixtures.iv(),
+                 endpoint: "http://localhost:4001/ws"
                )
 
       assert config.key == ExBkavInvoice.Fixtures.key()
@@ -101,13 +100,15 @@ defmodule ExBkavInvoice.ConfigTest do
       assert message =~ "partner_token"
     end
 
-    test "rejects an unknown endpoint name" do
-      assert {:error, %ExBkavInvoice.Error{kind: :config}} =
+    test "rejects a non-string endpoint" do
+      assert {:error, %ExBkavInvoice.Error{kind: :config, message: message}} =
                ExBkavInvoice.Config.new(
                  partner_guid: "g",
                  partner_token: ExBkavInvoice.Fixtures.token(),
-                 endpoint: :staging
+                 endpoint: :production
                )
+
+      assert message =~ "must be a URL string"
     end
   end
 

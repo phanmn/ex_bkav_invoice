@@ -21,8 +21,14 @@ defmodule ExBkavInvoice do
         ExBkavInvoice.Config.new!(
           partner_guid: System.fetch_env!("BKAV_PARTNER_GUID"),
           partner_token: System.fetch_env!("BKAV_PARTNER_TOKEN"),
-          endpoint: :demo
+          endpoint: System.fetch_env!("BKAV_ENDPOINT")
         )
+
+  `:endpoint` is the full web-service URL and has no default — which host you
+  talk to is deployment configuration, so it belongs in your config rather than
+  in this library. Bkav's own hosts are
+  `https://wsdemo.ehoadon.vn/WSPublicEHoaDon.asmx` for testing and
+  `https://ws.ehoadon.vn/WSPublicEHoaDon.asmx` for production.
 
   ## Issuing an invoice
 

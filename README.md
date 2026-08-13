@@ -29,14 +29,21 @@ config =
   ExBkavInvoice.Config.new!(
     partner_guid: System.fetch_env!("BKAV_PARTNER_GUID"),
     partner_token: System.fetch_env!("BKAV_PARTNER_TOKEN"),
-    endpoint: :demo
+    endpoint: System.fetch_env!("BKAV_ENDPOINT")
   )
 ```
 
+`:endpoint` is the full web-service URL and has **no default**. Which host you
+talk to is deployment configuration, so it comes from your config rather than
+from a name baked into this library — and a missing endpoint fails loudly
+instead of quietly issuing invoices against a test host.
+
+For reference, Bkav's own hosts:
+
 | Environment | Web UI | Web service |
 |-------------|--------|-------------|
-| `:demo` | `demo.ehoadon.vn` | `wsdemo.ehoadon.vn/WSPublicEHoaDon.asmx` |
-| `:production` | `van.ehoadon.vn` | `ws.ehoadon.vn/WSPublicEHoaDon.asmx` |
+| Testing | `demo.ehoadon.vn` | `https://wsdemo.ehoadon.vn/WSPublicEHoaDon.asmx` |
+| Production | `van.ehoadon.vn` | `https://ws.ehoadon.vn/WSPublicEHoaDon.asmx` |
 
 ## Issuing an invoice
 
@@ -172,7 +179,7 @@ The `PartnerToken` carries both halves of the key material as
 Bkav's FAQ documents the compression step but never names the algorithm, and the
 two plausible readings of their .NET sample disagree on the bytes: `GZipStream`
 yields a gzip container, `DeflateStream` yields raw deflate. This library
-defaults to `:gzip`. If the demo endpoint rejects your first request, try:
+defaults to `:gzip`. If the service rejects your first request, try:
 
 ```elixir
 ExBkavInvoice.Config.new!(..., compression: :deflate)
@@ -207,6 +214,7 @@ network without touching the encryption path:
 ExBkavInvoice.Config.new!(
   partner_guid: "test",
   partner_token: token,
+  endpoint: "https://wsdemo.example.test/WSPublicEHoaDon.asmx",
   req_options: [plug: fn conn -> ... end]
 )
 ```
