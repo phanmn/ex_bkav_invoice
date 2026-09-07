@@ -108,14 +108,54 @@ defmodule ExBkavInvoice.Client do
 
   defp decode_json(plaintext) do
     case Jason.decode(plaintext) do
-      {:ok, %{} = decoded} ->
-        {:ok, decoded}
+      {:ok, %{} = decoded} -> {:ok, decoded}
+      {:ok, other} -> {:error, not_an_envelope(other, plaintext)}
+      {:error, reason} -> {:error, not_an_envelope(plaintext, plaintext, reason)}
+    end
+  end
 
-      {:ok, other} ->
-        {:error, ExBkavInvoice.Error.codec("expected a JSON object from eHoadon", other)}
+  # eHoadon does not always answer with the JSON envelope. A request it cannot
+  # process at all comes back as a bare sentence, which is a real answer from the
+  # service rather than a decoding problem on this side:
+  #
+  #     Có lỗi xảy ra. Xin vui lòng thử lại sau (lỗi đã được thông báo cho quản
+  #     trị) [!|639243877390345577|!] [#428068]
+  #
+  #     [MessageForUser] PartnerGUID "..." không hợp lệ
+  #
+  # Reporting those as `:codec` sends the reader looking for a decoding bug and
+  # buries the one line saying what eHoadon objected to — including the reference
+  # its support team asks for. So anything legible is reported as `:api`, and
+  # `:codec` is kept for a body that genuinely says nothing.
+  defp not_an_envelope(value, plaintext, reason \\ nil) do
+    case message_text(value) do
+      nil -> ExBkavInvoice.Error.codec("could not decode the eHoadon response", reason || value)
+      text -> ExBkavInvoice.Error.api(text, support_reference(text), plaintext)
+    end
+  end
 
-      {:error, reason} ->
-        {:error, ExBkavInvoice.Error.codec("could not decode the eHoadon response", reason)}
+  # `[MessageForUser]` marks a message as meant for display; it is not part of
+  # what eHoadon says, so it is dropped.
+  defp message_text(value) when is_binary(value) do
+    if String.valid?(value) do
+      value
+      |> String.replace_prefix("[MessageForUser]", "")
+      |> String.trim()
+      |> case do
+        "" -> nil
+        text -> text
+      end
+    end
+  end
+
+  defp message_text(_value), do: nil
+
+  # Bkav tags a server-side failure with `[#428068]` and its support team asks
+  # for that number, so it is lifted into `:code` where callers already look.
+  defp support_reference(text) do
+    case Regex.run(~r/\[#(\d+)\]/, text, capture: :all_but_first) do
+      [reference] -> reference
+      nil -> nil
     end
   end
 

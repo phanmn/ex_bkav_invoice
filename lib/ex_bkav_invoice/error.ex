@@ -6,13 +6,17 @@ defmodule ExBkavInvoice.Error do
   retry can help:
 
     * `:config` — bad credentials or options; retrying will not help.
-    * `:codec` — compress/encrypt/encode failed, or a response could not be
-      decoded. A GUID or token mismatch surfaces here as
+    * `:codec` — compress/encrypt/encode failed, or a response said nothing that
+      could be read. A GUID or token mismatch surfaces here as
       `"Padding is invalid and cannot be removed"`.
     * `:transport` — the HTTP call itself failed; usually retryable.
     * `:soap` — a SOAP fault, or a body without a result element.
-    * `:api` — the call reached eHoadon and it answered `Status: 1`. `:code`
-      holds Bkav's error code (e.g. `"EHD0000124"`) when present.
+    * `:api` — the call reached eHoadon and it refused. Usually that is
+      `Status: 1` in the JSON envelope, but a request eHoadon cannot process at
+      all is answered with a bare sentence instead, and that is reported here
+      too — the message is then eHoadon's own words. `:code` holds Bkav's error
+      code (e.g. `"EHD0000124"`), or the `[#428068]` support reference from a
+      plain-text refusal, when present.
   """
 
   @type kind :: :config | :codec | :transport | :soap | :api

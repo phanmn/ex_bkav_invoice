@@ -133,6 +133,69 @@ defmodule ExBkavInvoice.ClientTest do
       assert {:error, %ExBkavInvoice.Error{kind: :api, message: "CommandType is not valid (200)"}} =
                ExBkavInvoice.Client.exec(config, :get_status, "guid")
     end
+
+    # A request eHoadon cannot process is answered with a sentence rather than
+    # the JSON envelope. That is eHoadon refusing, not a decoding problem here,
+    # and reporting it as `:codec` would hide what it said.
+    test "reports a plain-text refusal as an api error carrying eHoadon's words" do
+      text = ExBkavInvoice.Fixtures.server_error_text()
+      config = plain_reply(text)
+
+      assert {:error, %ExBkavInvoice.Error{} = error} =
+               ExBkavInvoice.Client.exec(config, :create_draft, [])
+
+      assert error.kind == :api
+      assert error.message == text
+      # Bkav's support team asks for this reference.
+      assert error.code == "428068"
+      assert error.reason == text
+    end
+
+    test "drops the display marker from a refusal meant to be shown" do
+      config = plain_reply(~s([MessageForUser] PartnerGUID "0000" không hợp lệ))
+
+      assert {:error, %ExBkavInvoice.Error{kind: :api} = error} =
+               ExBkavInvoice.Client.exec(config, :get_status, "guid")
+
+      assert error.message == ~s(PartnerGUID "0000" không hợp lệ)
+      assert error.code == nil
+    end
+
+    test "reports a bare JSON string refusal as an api error" do
+      plug = fn conn ->
+        Plug.Conn.resp(conn, 200, "<ExecuteCommandResult>\"sai token\"</ExecuteCommandResult>")
+      end
+
+      config = ExBkavInvoice.Fixtures.config(req_options: [plug: plug])
+
+      assert {:error, %ExBkavInvoice.Error{kind: :api, message: "sai token"}} =
+               ExBkavInvoice.Client.exec(config, :get_status, "guid")
+    end
+
+    # Nothing was said, so there is nothing to report but the decoding failure.
+    test "still reports a codec error when the reply says nothing" do
+      config = plain_reply("   ")
+
+      assert {:error, %ExBkavInvoice.Error{kind: :codec, message: message}} =
+               ExBkavInvoice.Client.exec(config, :get_status, "guid")
+
+      assert message =~ "could not decode"
+    end
+
+    test "still reports a codec error for a reply that is not text" do
+      config = plain_reply(<<0xFF, 0xFE, 0xFD>>)
+
+      assert {:error, %ExBkavInvoice.Error{kind: :codec}} =
+               ExBkavInvoice.Client.exec(config, :get_status, "guid")
+    end
+  end
+
+  defp plain_reply(text) do
+    plug = fn conn ->
+      Plug.Conn.resp(conn, 200, ExBkavInvoice.Fixtures.plain_soap_response(text))
+    end
+
+    ExBkavInvoice.Fixtures.config(req_options: [plug: plug])
   end
 
   describe "exec!/4" do

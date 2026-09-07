@@ -37,6 +37,31 @@ defmodule ExBkavInvoice.Fixtures do
     """
   end
 
+  @doc """
+  The envelope eHoadon answers with when it carries `text` verbatim — neither
+  encrypted nor JSON, which is what a request it cannot process comes back as.
+  """
+  def plain_soap_response(text, operation \\ :execute_command) do
+    element = element_name(operation)
+
+    """
+    <?xml version="1.0" encoding="utf-8"?>
+    <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+      <soap:Body>
+        <#{element}ExBkavInvoice.Response xmlns="http://tempuri.org/">
+          <#{element}Result>#{ExBkavInvoice.Soap.escape(text)}</#{element}Result>
+        </#{element}ExBkavInvoice.Response>
+      </soap:Body>
+    </soap:Envelope>
+    """
+  end
+
+  @doc "The generic failure eHoadon returns when it cannot process a request."
+  def server_error_text do
+    "Có lỗi xảy ra. Xin vui lòng thử lại sau (lỗi đã được thông báo cho quản trị) " <>
+      "[!|639243877390345577|!] [#428068]"
+  end
+
   defp element_name(:execute_command), do: "ExecuteCommand"
   defp element_name(:exec_command), do: "ExecCommand"
 
