@@ -9,8 +9,12 @@ defmodule ExBkavInvoice.Invoices do
   re-implementing its quirks at every call site.
 
   This module is the boundary. It answers `{:ok, ExBkavInvoice.InvoiceResult.t()}`
-  or `{:error, message}` where `message` is a plain string ready to log or store,
-  and it owns the two traps that otherwise leak outwards:
+  or `{:error, ExBkavInvoice.Error{}}` — named fields on both sides, no Bkav keys
+  and no envelope. A rejected invoice becomes an `:api` error like any other
+  refusal, so a caller reads `message`, `code` and `kind` (or
+  `ExBkavInvoice.Error.retryable?/1`) without caring which layer said no.
+
+  It also owns the two traps that otherwise leak outwards:
 
     * A batch answers `Status: 0` at the envelope level even when the one invoice
       inside it failed, so the per-invoice status is what decides. `create/3`
@@ -31,11 +35,11 @@ defmodule ExBkavInvoice.Invoices do
   Use `ExBkavInvoice.create_invoice/3` directly to send a batch.
   """
   @spec create(ExBkavInvoice.Config.t(), map(), keyword()) ::
-          {:ok, ExBkavInvoice.InvoiceResult.t()} | {:error, String.t()}
+          {:ok, ExBkavInvoice.InvoiceResult.t()} | {:error, ExBkavInvoice.Error.t()}
   def create(%ExBkavInvoice.Config{} = config, invoice, opts \\ []) when is_map(invoice) do
     case ExBkavInvoice.create_invoice(config, [invoice], opts) do
       {:ok, response} -> single_result(response)
-      {:error, error} -> {:error, describe(error)}
+      {:error, error} -> {:error, error}
     end
   end
 
@@ -44,25 +48,29 @@ defmodule ExBkavInvoice.Invoices do
 
   Only works on an account with an HSM certificate.
   """
-  @spec sign(ExBkavInvoice.Config.t(), String.t(), keyword()) :: :ok | {:error, String.t()}
+  @spec sign(ExBkavInvoice.Config.t(), String.t(), keyword()) ::
+          :ok | {:error, ExBkavInvoice.Error.t()}
   def sign(%ExBkavInvoice.Config{} = config, invoice_guid, opts \\ [])
       when is_binary(invoice_guid) do
     case ExBkavInvoice.sign(config, invoice_guid, opts) do
       {:ok, _response} -> :ok
-      {:error, error} -> {:error, describe(error)}
+      {:error, error} -> {:error, error}
     end
   end
 
   defp single_result(response) do
     case ExBkavInvoice.Response.split_results(response) do
-      {[result], []} -> {:ok, ExBkavInvoice.InvoiceResult.from_map(result)}
-      {_created, [failed | _]} -> {:error, failure_message(failed)}
-      {[], []} -> {:error, "eHoadon returned no invoice result"}
+      {[result], []} ->
+        {:ok, ExBkavInvoice.InvoiceResult.from_map(result)}
+
+      {_created, [failed | _]} ->
+        {:error, ExBkavInvoice.Error.api(failure_message(failed))}
+
+      {[], []} ->
+        {:error, ExBkavInvoice.Error.api("eHoadon returned no invoice result")}
     end
   end
 
   defp failure_message(%{"MessLog" => log}) when is_binary(log) and log != "", do: log
   defp failure_message(_failed), do: "eHoadon rejected the invoice"
-
-  defp describe(%ExBkavInvoice.Error{} = error), do: Exception.message(error)
 end

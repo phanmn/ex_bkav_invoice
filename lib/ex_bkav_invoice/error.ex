@@ -37,6 +37,26 @@ defmodule ExBkavInvoice.Error do
   def message(%__MODULE__{kind: kind, message: message, code: code}),
     do: "[#{kind}] #{message} (#{code})"
 
+  @doc """
+  Whether another attempt at the same call could succeed.
+
+  Only a failure to complete the call is worth repeating. Everything else is
+  eHoadon having considered the request and declined it, or this side being
+  misconfigured, and a retry reproduces it exactly — so a caller that retries on
+  anything else burns its attempts re-sending an invoice eHoadon has already
+  refused.
+
+  ## Examples
+
+      iex> ExBkavInvoice.Error.retryable?(ExBkavInvoice.Error.transport("request failed"))
+      true
+
+      iex> ExBkavInvoice.Error.retryable?(ExBkavInvoice.Error.api("Mã số thuế không hợp lệ"))
+      false
+  """
+  @spec retryable?(t()) :: boolean()
+  def retryable?(%__MODULE__{kind: kind}), do: kind == :transport
+
   @doc false
   def config(message), do: %__MODULE__{kind: :config, message: message}
 
