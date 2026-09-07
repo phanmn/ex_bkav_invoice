@@ -28,16 +28,17 @@ defmodule ExBkavInvoice.Invoices do
   @doc """
   Creates one invoice and returns what eHoadon allocated for it.
 
-  `invoice` is a single `InvoiceDataWS` map. Options are those of
+  `invoice` is an `ExBkavInvoice.Invoice`, or a raw `InvoiceDataWS` map for
+  anything the struct does not cover. Options are those of
   `ExBkavInvoice.create_invoice/3` — notably `:cmd_type`, which defaults to
   `:create_draft` and leaves the invoice a deletable draft with no number.
 
   Use `ExBkavInvoice.create_invoice/3` directly to send a batch.
   """
-  @spec create(ExBkavInvoice.Config.t(), map(), keyword()) ::
+  @spec create(ExBkavInvoice.Config.t(), ExBkavInvoice.Invoice.t() | map(), keyword()) ::
           {:ok, ExBkavInvoice.InvoiceResult.t()} | {:error, ExBkavInvoice.Error.t()}
   def create(%ExBkavInvoice.Config{} = config, invoice, opts \\ []) when is_map(invoice) do
-    case ExBkavInvoice.create_invoice(config, [invoice], opts) do
+    case ExBkavInvoice.create_invoice(config, [payload(invoice)], opts) do
       {:ok, response} -> single_result(response)
       {:error, error} -> {:error, error}
     end
@@ -57,6 +58,9 @@ defmodule ExBkavInvoice.Invoices do
       {:error, error} -> {:error, error}
     end
   end
+
+  defp payload(%ExBkavInvoice.Invoice{} = invoice), do: ExBkavInvoice.Invoice.to_map(invoice)
+  defp payload(%{} = invoice), do: invoice
 
   defp single_result(response) do
     case ExBkavInvoice.Response.split_results(response) do
