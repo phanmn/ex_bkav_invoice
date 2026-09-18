@@ -28,10 +28,16 @@ defmodule ExBkavInvoice.InvoiceTest do
     test "sends unset strings as empty rather than null" do
       header = ExBkavInvoice.Invoice.to_map(invoice())["Invoice"]
 
-      for key <- ~w(BuyerUnitName BuyerAddress BuyerBankAccount ReceiverEmail
+      for key <- ~w(BuyerUnitName BuyerAddress BuyerBankAccount CCCD ReceiverEmail
                     ReceiverMobile ReceiverName ReceiverAddress Note BillCode) do
         assert header[key] == "", "#{key} should be an empty string, got #{inspect(header[key])}"
       end
+    end
+
+    test "sends the buyer's citizen number as CCCD" do
+      header = ExBkavInvoice.Invoice.to_map(invoice(buyer_citizen_id: "079123456789"))["Invoice"]
+
+      assert header["CCCD"] == "079123456789"
     end
 
     test "trims what it is given" do

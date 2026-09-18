@@ -17,6 +17,13 @@ defmodule ExBkavInvoice.Invoice do
   to recognise one it has already accepted — which is what makes a retry safe.
   Set it to something stable per invoice, such as the order id.
 
+  ## Buyer
+
+  `buyer_name` is the person and `buyer_unit_name` their company, if any;
+  `buyer_tax_code` identifies whichever of the two the invoice is made out to.
+  `buyer_citizen_id` is the buyer's số căn cước công dân, which eHoadon carries
+  as `CCCD` — the identifier an individual with no tax code is invoiced under.
+
   ## Amounts
 
   Each line carries a net `amount` and a separate `tax_amount`; eHoadon expects
@@ -35,6 +42,7 @@ defmodule ExBkavInvoice.Invoice do
           buyer_unit_name: String.t() | nil,
           buyer_address: String.t() | nil,
           buyer_bank_account: String.t() | nil,
+          buyer_citizen_id: String.t() | nil,
           pay_method_id: integer(),
           receive_type_id: integer(),
           receiver_email: String.t() | nil,
@@ -58,6 +66,7 @@ defmodule ExBkavInvoice.Invoice do
             buyer_unit_name: nil,
             buyer_address: nil,
             buyer_bank_account: nil,
+            buyer_citizen_id: nil,
             pay_method_id: 2,
             # 1 = email only. Asking eHoadon to send an SMS without a number is
             # an error rather than a no-op, so this is the safe default.
@@ -117,6 +126,7 @@ defmodule ExBkavInvoice.Invoice do
       "BuyerUnitName" => text(invoice.buyer_unit_name),
       "BuyerAddress" => text(invoice.buyer_address),
       "BuyerBankAccount" => text(invoice.buyer_bank_account),
+      "CCCD" => text(invoice.buyer_citizen_id),
       "PayMethodID" => invoice.pay_method_id,
       "ReceiveTypeID" => invoice.receive_type_id,
       "ReceiverEmail" => text(invoice.receiver_email),
